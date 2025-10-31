@@ -1,11 +1,11 @@
 [package]
-name = "rx"
+name = "px"
 version = "0.5.2"
 description = "a modern, minimalist pixel editor"
 license = "GPL-3.0-only"
-repository = "https://github.com/cloudhead/rx"
+repository = "https://github.com/DerLando/px"
 homepage = "https://rx.cloudhead.io"
-authors = ["Alexis Sellier <self@cloudhead.io>"]
+authors = ["Alexis Sellier <self@cloudhead.io>", "Lando Schumpich <lando.schumpich@gmail.com"]
 edition = "2021"
 
 [features]

@@ -1,6 +1,6 @@
 #![allow(clippy::inconsistent_struct_constructor)]
-use rx::execution::{DigestMode, ExecutionMode, GifMode};
-use rx::logger;
+use px::execution::{DigestMode, ExecutionMode, GifMode};
+use px::logger;
 
 use std::io;
 use std::path::PathBuf;
@@ -13,7 +13,7 @@ A Modern & Minimalist Pixel Editor
 
 const HELP: &str = r#"
 USAGE
-    rx [OPTIONS] [<path>..]
+    px [OPTIONS] [<path>..]
 
 OPTIONS
     -h, --help           Prints help
@@ -31,23 +31,23 @@ OPTIONS
 
 fn main() {
     if let Err(e) = self::execute(pico_args::Arguments::from_env()) {
-        eprintln!("rx: {}", e);
+        eprintln!("px: {}", e);
         process::exit(1);
     }
 }
 
 fn execute(mut args: pico_args::Arguments) -> Result<(), Box<dyn std::error::Error>> {
-    rx::ALLOCATOR.reset();
+    px::ALLOCATOR.reset();
 
-    let default = rx::Options::default();
+    let default = px::Options::default();
 
     if args.contains(["-h", "--help"]) {
-        println!("rx v{}{}{}", rx::VERSION, HEADER, HELP);
+        println!("px v{}{}{}", px::VERSION, HEADER, HELP);
         return Ok(());
     }
 
     if args.contains(["-V", "--version"]) {
-        println!("rx v{}", rx::VERSION);
+        println!("px v{}", px::VERSION);
         return Ok(());
     }
 
@@ -109,9 +109,9 @@ fn execute(mut args: pico_args::Arguments) -> Result<(), Box<dyn std::error::Err
         ExecutionMode::Normal
     };
 
-    let glyphs = rx::data::GLYPHS;
+    let glyphs = px::data::GLYPHS;
 
-    let options = rx::Options {
+    let options = px::Options {
         width,
         height,
         headless,
@@ -123,7 +123,7 @@ fn execute(mut args: pico_args::Arguments) -> Result<(), Box<dyn std::error::Err
     };
 
     match args.free() {
-        Ok(paths) => rx::init(&paths, options).map_err(|e| e.into()),
+        Ok(paths) => px::init(&paths, options).map_err(|e| e.into()),
         Err(e) => {
             Err(io::Error::new(io::ErrorKind::InvalidInput, format!("{}\n{}", e, HELP)).into())
         }
