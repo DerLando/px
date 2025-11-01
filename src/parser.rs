@@ -176,6 +176,7 @@ impl Parse for BrushMode {
                     "ysym" => Ok((BrushMode::YSym, p)),
                     "xray" => Ok((BrushMode::XRay, p)),
                     "circle" => Ok((BrushMode::Circle, p)),
+                    "rect" => Ok((BrushMode::Rectangle, p)),
                     "line" => optional(whitespace())
                         .then(optional(natural()))
                         .parse(p)
