@@ -1,4 +1,4 @@
-use rx::execution::{DigestMode, ExecutionMode};
+use px::execution::{DigestMode, ExecutionMode};
 use std::env;
 use std::fs;
 use std::io;
@@ -146,7 +146,7 @@ fn run(name: &str) -> io::Result<()> {
 
     let glyphs = glyphs.as_slice();
 
-    let options = rx::Options {
+    let options = px::Options {
         resizable: false,
         headless: true,
         source: Some(path.join(name).with_extension("rx")),
@@ -159,6 +159,6 @@ fn run(name: &str) -> io::Result<()> {
 
     {
         let _guard = MUTEX.lock();
-        rx::init::<&str>(&[], options)
+        px::init::<&str>(&[], options)
     }
 }

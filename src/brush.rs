@@ -3,13 +3,14 @@ use crate::view::{ViewCoords, ViewExtent};
 
 use crate::gfx::math::{Point2, Vector2};
 use crate::gfx::rect::Rect;
-use crate::gfx::shape2d::{Fill, Rotation, Shape, Stroke};
+use crate::gfx::shape2d::{Circle, Fill, Rotation, Shape, Stroke};
 use crate::gfx::{Rgba8, ZDepth};
 
 use crate::util::vector_angle;
 use std::collections::BTreeSet;
 use std::f32::consts::PI;
-use std::fmt;
+use std::fmt::Display;
+use std::{f32, fmt};
 
 /// Input state of the brush.
 #[derive(PartialEq, Eq, Clone, Debug)]
@@ -72,6 +73,21 @@ pub enum Align {
     BottomLeft,
 }
 
+#[derive(PartialEq, Eq, Copy, Clone, Debug)]
+pub enum BrushHead {
+    Square,
+    Circle,
+}
+
+impl Display for BrushHead {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            BrushHead::Square => write!(f, "square"),
+            BrushHead::Circle => write!(f, "circle"),
+        }
+    }
+}
+
 /// Brush context.
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub struct Brush {
@@ -83,6 +99,8 @@ pub struct Brush {
     pub stroke: Vec<Point2<i32>>,
     /// Current stroke color.
     pub color: Rgba8,
+    /// Current head to use for strokes
+    pub head: BrushHead,
 
     /// Currently active brush modes.
     modes: BTreeSet<BrushMode>,
@@ -99,6 +117,7 @@ impl Default for Brush {
             state: BrushState::NotDrawing,
             stroke: Vec::with_capacity(32),
             color: Rgba8::TRANSPARENT,
+            head: BrushHead::Square,
             modes: BTreeSet::new(),
             curr: Point2::new(0, 0),
             prev: Point2::new(0, 0),
@@ -367,6 +386,21 @@ impl Brush {
         scale: f32,
         align: Align,
     ) -> Shape {
+        match self.head {
+            BrushHead::Square => self.square_head_shape(p, z, stroke, fill, scale, align),
+            BrushHead::Circle => self.circle_head_shape(p, z, stroke, fill, scale, align),
+        }
+    }
+
+    fn square_head_shape(
+        &self,
+        p: Point2<f32>,
+        z: ZDepth,
+        stroke: Stroke,
+        fill: Fill,
+        scale: f32,
+        align: Align,
+    ) -> Shape {
         let x = p.x;
         let y = p.y;
 
@@ -381,6 +415,34 @@ impl Brush {
             Rect::new(x, y, x + size * scale, y + size * scale) - Vector2::new(offset, offset),
             z,
             Rotation::ZERO,
+            stroke,
+            fill,
+        )
+    }
+
+    fn circle_head_shape(
+        &self,
+        p: Point2<f32>,
+        z: ZDepth,
+        stroke: Stroke,
+        fill: Fill,
+        scale: f32,
+        _align: Align,
+    ) -> Shape {
+        // TODO: Offset here is not right, when drawing with xsym/ysym mode
+        // this problem is the same though, when drawing with the square brush...
+        let origin = p;
+
+        // We keep sides a bit dynamic, as lower counts look better on lower brush sizes
+        // For large brush sizes, 16 sides looks pretty good always
+        let sides = (self.size * 4).min(16);
+        Shape::Circle(
+            Circle {
+                position: origin.into(),
+                radius: (self.size as f32 * scale) / 2.0,
+                sides: sides as u32,
+            },
+            z,
             stroke,
             fill,
         )
@@ -421,14 +483,14 @@ impl Brush {
     /// Draw a circle from origin and a pt on the circle. Uses Bresenham's circle algorithm.
     pub fn circle(origin: Point2<i32>, pt_on: Point2<i32>, canvas: &mut Vec<Point2<i32>>) {
         let draw_circle_quadrants = |x: i32, y: i32, canvas: &mut Vec<Point2<i32>>| {
-            canvas.push(origin + (x, y).into());
-            canvas.push(origin + (-x, y).into());
-            canvas.push(origin + (x, -y).into());
-            canvas.push(origin + (-x, -y).into());
-            canvas.push(origin + (y, x).into());
-            canvas.push(origin + (-y, x).into());
-            canvas.push(origin + (y, -x).into());
-            canvas.push(origin + (-y, -x).into());
+            canvas.push(origin + Point2::new(x, y));
+            canvas.push(origin + Point2::new(-x, y));
+            canvas.push(origin + Point2::new(x, -y));
+            canvas.push(origin + Point2::new(-x, -y));
+            canvas.push(origin + Point2::new(y, x));
+            canvas.push(origin + Point2::new(-y, x));
+            canvas.push(origin + Point2::new(y, -x));
+            canvas.push(origin + Point2::new(-y, -x));
         };
 
         let origin_f = Point2::new(origin.x as f32, origin.y as f32);

@@ -3,7 +3,7 @@ use memoir::*;
 
 use directories as dirs;
 
-use crate::brush::BrushMode;
+use crate::brush::{BrushHead, BrushMode};
 use crate::gfx::Rgba8;
 use crate::platform;
 use crate::session::{Direction, Mode, VisualState};
@@ -188,6 +188,25 @@ impl Parse for BrushMode {
                 }
             },
             "<mode>",
+        )
+    }
+}
+
+impl Parse for BrushHead {
+    fn parser() -> Parser<Self> {
+        Parser::new(
+            |input| {
+                let (id, p) = identifier().parse(input)?;
+                match id.as_str() {
+                    "square" => Ok((BrushHead::Square, p)),
+                    "circle" => Ok((BrushHead::Circle, p)),
+                    kind => Err((
+                        memoir::result::Error::new(format!("unknown brush head '{}'", kind)),
+                        input,
+                    )),
+                }
+            },
+            "<head>",
         )
     }
 }

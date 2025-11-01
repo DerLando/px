@@ -388,6 +388,20 @@ where
     }
 }
 
+impl<S> std::ops::Add<Point2<S>> for Point2<S>
+where
+    S: std::ops::Add<Output = S> + Copy,
+{
+    type Output = Point2<S>;
+
+    fn add(self, other: Point2<S>) -> Point2<S> {
+        Point2 {
+            x: self.x + other.x,
+            y: self.y + other.y,
+        }
+    }
+}
+
 /// A 4 x 4, column major matrix
 ///
 /// This type is marked as `#[repr(C)]`.
