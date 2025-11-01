@@ -44,6 +44,8 @@ pub enum BrushMode {
         /// snap angle (degrees)
         Option<u32>,
     ),
+    /// Confine stroke to a circle with radius from starting point
+    Circle, // TODO: Could allow to set a fixed radius here
 }
 
 impl fmt::Display for BrushMode {
@@ -57,6 +59,7 @@ impl fmt::Display for BrushMode {
             Self::XRay => "xray".fmt(f),
             Self::Line(Some(snap)) => write!(f, "{} degree snap line", snap),
             Self::Line(None) => write!(f, "line"),
+            Self::Circle => write!(f, "circle"),
         }
     }
 }
@@ -161,6 +164,28 @@ impl Brush {
         self.draw(p);
     }
 
+    /// If any primitive drawing modes are active, they will be returned like f.e.
+    /// - Line
+    /// - Circle
+    /// - etc.
+    fn primitive_modes(&self) -> impl Iterator<Item = BrushMode> + use<'_> {
+        let is_primitive = |mode: &&BrushMode| match mode {
+            BrushMode::Line(_) | BrushMode::Circle => true,
+            _ => false,
+        };
+
+        self.modes.iter().filter(is_primitive).map(|m| *m)
+    }
+
+    /// If a circle mode is active, return it
+    fn circle_mode(&self) -> Option<BrushMode> {
+        self.modes
+            .iter()
+            .filter(|mode| matches!(mode, BrushMode::Circle))
+            .cloned()
+            .next()
+    }
+
     /// If a line mode is active, return it
     fn line_mode(&self) -> Option<BrushMode> {
         self.modes
@@ -172,13 +197,25 @@ impl Brush {
 
     /// Draw. Called while input is pressed.
     pub fn draw(&mut self, p: ViewCoords<i32>) {
+        // TODO: Pull this logic onto a method to update brush pos, since
+        // it might get even more complicated in the future
         self.prev = if let BrushState::DrawStarted(_) = self.state {
             *p
         } else {
-            self.curr
+            if self.circle_mode().is_none() {
+                self.curr
+            } else {
+                // If we are drawing circles, we NEVER update prev
+                self.prev
+            }
         };
         self.curr = *p;
 
+        // TODO: This way of checking modes means we can't draw a circle and a line at once.
+        // I think drawing both at once is rarely desirable, but definitely not strictly something
+        // we must forbid, since the algorithm could handle both.
+        // It would be better to check if any primitives should be drawn (line, circle, rect, etc.)
+        // and if yes draw all of those according to modes and if no, just draw a line from prev to cur
         if let Some(BrushMode::Line(snap)) = self.line_mode() {
             let start = *self.stroke.first().unwrap_or(&p);
             self.stroke.clear();
@@ -198,6 +235,9 @@ impl Brush {
             };
 
             Brush::line(start, end, &mut self.stroke);
+        } else if let Some(BrushMode::Circle) = self.circle_mode() {
+            self.stroke.clear();
+            Brush::circle(self.prev, self.curr, &mut self.stroke);
         } else {
             Brush::line(self.prev, self.curr, &mut self.stroke);
             self.stroke.dedup();
@@ -350,6 +390,43 @@ impl Brush {
                 err1 += dx;
                 p0.y += sy;
             }
+        }
+    }
+
+    /// Draw a circle from origin and a pt on the circle. Uses Bresenham's circle algorithm.
+    pub fn circle(origin: Point2<i32>, pt_on: Point2<i32>, canvas: &mut Vec<Point2<i32>>) {
+        let draw_circle_quadrants = |x: i32, y: i32, canvas: &mut Vec<Point2<i32>>| {
+            canvas.push(origin + (x, y).into());
+            canvas.push(origin + (-x, y).into());
+            canvas.push(origin + (x, -y).into());
+            canvas.push(origin + (-x, -y).into());
+            canvas.push(origin + (y, x).into());
+            canvas.push(origin + (-y, x).into());
+            canvas.push(origin + (y, -x).into());
+            canvas.push(origin + (-y, -x).into());
+        };
+
+        let origin_f = Point2::new(origin.x as f32, origin.y as f32);
+        let pt_on = Point2::new(pt_on.x as f32, pt_on.y as f32);
+        let radius = (pt_on - origin_f).magnitude() as i32;
+
+        // TODO: Draw a proper circle using bresenham algo
+        let mut x = 0;
+        let mut y = radius;
+        let mut d = 3 - 2 * radius;
+        draw_circle_quadrants(x, y, canvas);
+
+        while y >= x {
+            if d > 0 {
+                y -= 1;
+                d = d + 4 * (x - y) + 10;
+            } else {
+                d = d + 4 * x + 6;
+            }
+
+            x += 1;
+
+            draw_circle_quadrants(x, y, canvas);
         }
     }
 

@@ -16,6 +16,7 @@
 //! Most of the code in this module was borrowed from the `cgmath` package.
 
 pub use num_traits::{cast, Float, One, Zero};
+use num_traits::{real::Real, PrimInt};
 
 /// View origin.
 #[derive(PartialEq, Eq, Copy, Clone, Debug)]
@@ -57,9 +58,9 @@ impl<S: Sized> Vector2<S> {
     #[inline]
     pub fn magnitude(self) -> S
     where
-        S: Float,
+        S: Real,
     {
-        Float::sqrt(Self::dot(self, self))
+        Real::sqrt(Self::dot(self, self))
     }
 
     /// Dot product of two vectors.
@@ -118,6 +119,13 @@ impl<T: Copy> From<[T; 2]> for Vector2<T> {
     #[inline]
     fn from(array: [T; 2]) -> Self {
         Vector2::new(array[0], array[1])
+    }
+}
+
+impl<T: Copy> From<(T, T)> for Vector2<T> {
+    #[inline]
+    fn from(tuple: (T, T)) -> Self {
+        Vector2::new(tuple.0, tuple.1)
     }
 }
 
@@ -294,6 +302,13 @@ impl<T: Copy> From<[T; 2]> for Point2<T> {
     #[inline]
     fn from(array: [T; 2]) -> Self {
         Point2::new(array[0], array[1])
+    }
+}
+
+impl<T: Copy> From<(T, T)> for Point2<T> {
+    #[inline]
+    fn from(tuple: (T, T)) -> Self {
+        Point2::new(tuple.0, tuple.1)
     }
 }
 
