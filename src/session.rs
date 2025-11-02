@@ -2390,6 +2390,9 @@ impl Session {
             Command::BrushToggle(mode) => {
                 self.brush.toggle(mode);
             }
+            Command::BrushHead(head) => {
+                self.brush.head = head;
+            }
             Command::Brush => {
                 self.unimplemented();
             }

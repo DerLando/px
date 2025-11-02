@@ -8,7 +8,7 @@ for me in pixel-editing workflows:
 - More brush modes / settings:
   - Primitives
     - [x] Circle
-    - [ ] Rectangle
+    - [x] Rectangle
     - etc.
   - Brush heads, which are currently always a square of the set size
     - [ ] Circle head
@@ -34,5 +34,21 @@ for me in pixel-editing workflows:
     - Undo stack (maybe)
   - On second thought: A `.png` asset should be minimal in size to not bloat the software that uses its
     so we probably need a dedicated file-format for `px` and allow exporting `.png` files instead
-    - [ ] A nice format for export would be `.gif` since we deal in frames/animations already
-    - [ ] On export users should be able to select which frame(s) to export
+    - [x] A nice format for export would be `.gif` since we deal in frames/animations already
+    - [x] On export users should be able to select which frame(s) to export
+- IO improvements
+  - [ ] `.aseprite` is super popular for pixel art so doing interop with that would be quite nice
+- Keyboard drawing
+  - For a lot of *precise* edits I would much rather **not** use my mouse. The current design of `px` does not
+    really cater to that workflow though. For this to become more practical, both `normal` and `visual` mode would
+    need substsantial additions to make manipulating selections easier.
+  - I think the current design with a brush is not the proper abstraction for that, rather we should think in **strokes**,
+    where a stroke is performed between a *start* and an *end*. *Vim* only really deals in insertion/edit points so
+    an approach to fix this for `px` needs to differ somehow.
+  - It's a bit simpler for *visual* mode, where we manipulate a selection and then either fill it with a solid color,
+    (or potentially in the future a dither pattern), or *yank*, *delete*, etc. it. Here an easy way to improve that workflow
+    would be to implement more operators for selection manipulation f.e.
+    - select/deselect next/prev row/col
+    - selection repeats like `5n`
+    - multi-selection support
+    - selection primitives (rectangle / circle / polygon)

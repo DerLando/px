@@ -1,5 +1,5 @@
 use crate::autocomplete::{self, Autocomplete, FileCompleter, FileCompleterOpts};
-use crate::brush::BrushMode;
+use crate::brush::{BrushHead, BrushMode};
 use crate::history::History;
 use crate::parser::*;
 use crate::platform;
@@ -40,6 +40,7 @@ pub enum Command {
     BrushToggle(BrushMode),
     BrushSize(Op),
     BrushUnset(BrushMode),
+    BrushHead(BrushHead),
 
     #[allow(dead_code)]
     Crop(Rect<u32>),
@@ -154,6 +155,7 @@ impl fmt::Display for Command {
             Self::BrushSize(Op::Decr) => write!(f, "Decrease brush size"),
             Self::BrushSize(Op::Set(s)) => write!(f, "Set brush size to {}", s),
             Self::BrushUnset(m) => write!(f, "Unset brush `{}` mode", m),
+            Self::BrushHead(head) => write!(f, "Set brush head to `{:?}`", head),
             Self::Crop(_) => write!(f, "Crop view"),
             Self::ChangeDir(_) => write!(f, "Change the current working directory"),
             Self::Echo(_) => write!(f, "Echo a value"),
@@ -247,6 +249,7 @@ impl From<Command> for String {
             Command::BrushSize(Op::Decr) => format!("brush/size -"),
             Command::BrushSize(Op::Set(s)) => format!("brush/size {}", s),
             Command::BrushUnset(m) => format!("brush/unset {}", m),
+            Command::BrushHead(head) => format!("brush/head {}", head),
             Command::Echo(_) => unimplemented!(),
             Command::Edit(_) => unimplemented!(),
             Command::Fill(Some(c)) => format!("v/fill {}", c),
@@ -837,6 +840,10 @@ impl Default for Commands {
             .command("brush/toggle", "Toggle brush mode", |p| {
                 p.then(param::<BrushMode>())
                     .map(|(_, m)| Command::BrushToggle(m))
+            })
+            .command("brush/head", "Set brush head", |p| {
+                p.then(param::<BrushHead>())
+                    .map(|(_, h)| Command::BrushHead(h))
             })
             .command("brush", "Switch to brush", |p| {
                 p.value(Command::Tool(Tool::Brush))

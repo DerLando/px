@@ -3,13 +3,14 @@ use crate::view::{ViewCoords, ViewExtent};
 
 use crate::gfx::math::{Point2, Vector2};
 use crate::gfx::rect::Rect;
-use crate::gfx::shape2d::{Fill, Rotation, Shape, Stroke};
+use crate::gfx::shape2d::{Circle, Fill, Rotation, Shape, Stroke};
 use crate::gfx::{Rgba8, ZDepth};
 
 use crate::util::vector_angle;
 use std::collections::BTreeSet;
 use std::f32::consts::PI;
-use std::fmt;
+use std::fmt::Display;
+use std::{f32, fmt};
 
 /// Input state of the brush.
 #[derive(PartialEq, Eq, Clone, Debug)]
@@ -46,6 +47,7 @@ pub enum BrushMode {
     ),
     /// Confine stroke to a circle with radius from starting point
     Circle, // TODO: Could allow to set a fixed radius here
+    Rectangle,
 }
 
 impl fmt::Display for BrushMode {
@@ -60,6 +62,7 @@ impl fmt::Display for BrushMode {
             Self::Line(Some(snap)) => write!(f, "{} degree snap line", snap),
             Self::Line(None) => write!(f, "line"),
             Self::Circle => write!(f, "circle"),
+            Self::Rectangle => write!(f, "rect"),
         }
     }
 }
@@ -68,6 +71,21 @@ impl fmt::Display for BrushMode {
 pub enum Align {
     Center,
     BottomLeft,
+}
+
+#[derive(PartialEq, Eq, Copy, Clone, Debug)]
+pub enum BrushHead {
+    Square,
+    Circle,
+}
+
+impl Display for BrushHead {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            BrushHead::Square => write!(f, "square"),
+            BrushHead::Circle => write!(f, "circle"),
+        }
+    }
 }
 
 /// Brush context.
@@ -81,6 +99,8 @@ pub struct Brush {
     pub stroke: Vec<Point2<i32>>,
     /// Current stroke color.
     pub color: Rgba8,
+    /// Current head to use for strokes
+    pub head: BrushHead,
 
     /// Currently active brush modes.
     modes: BTreeSet<BrushMode>,
@@ -97,6 +117,7 @@ impl Default for Brush {
             state: BrushState::NotDrawing,
             stroke: Vec::with_capacity(32),
             color: Rgba8::TRANSPARENT,
+            head: BrushHead::Square,
             modes: BTreeSet::new(),
             curr: Point2::new(0, 0),
             prev: Point2::new(0, 0),
@@ -164,13 +185,23 @@ impl Brush {
         self.draw(p);
     }
 
+    /// Check if any primitive drawing moe is currently active
+    fn has_primitive_mode(&self) -> bool {
+        self.modes.iter().any(|mode| {
+            matches!(
+                mode,
+                BrushMode::Line(_) | BrushMode::Circle | BrushMode::Rectangle
+            )
+        })
+    }
+
     /// If any primitive drawing modes are active, they will be returned like f.e.
     /// - Line
     /// - Circle
     /// - etc.
     fn primitive_modes(&self) -> impl Iterator<Item = BrushMode> + use<'_> {
         let is_primitive = |mode: &&BrushMode| match mode {
-            BrushMode::Line(_) | BrushMode::Circle => true,
+            BrushMode::Line(_) | BrushMode::Circle | BrushMode::Rectangle => true,
             _ => false,
         };
 
@@ -197,50 +228,35 @@ impl Brush {
 
     /// Draw. Called while input is pressed.
     pub fn draw(&mut self, p: ViewCoords<i32>) {
-        // TODO: Pull this logic onto a method to update brush pos, since
-        // it might get even more complicated in the future
+        let has_primitive_mode = self.has_primitive_mode();
         self.prev = if let BrushState::DrawStarted(_) = self.state {
             *p
         } else {
-            if self.circle_mode().is_none() {
-                self.curr
-            } else {
-                // If we are drawing circles, we NEVER update prev
+            if has_primitive_mode {
+                // If we are drawing primitves, we NEVER update prev
+                // since we want the origin of the draw operation to
+                // consist across mouse moves
                 self.prev
+            } else {
+                self.curr
             }
         };
         self.curr = *p;
 
-        // TODO: This way of checking modes means we can't draw a circle and a line at once.
-        // I think drawing both at once is rarely desirable, but definitely not strictly something
-        // we must forbid, since the algorithm could handle both.
-        // It would be better to check if any primitives should be drawn (line, circle, rect, etc.)
-        // and if yes draw all of those according to modes and if no, just draw a line from prev to cur
-        if let Some(BrushMode::Line(snap)) = self.line_mode() {
-            let start = *self.stroke.first().unwrap_or(&p);
-            self.stroke.clear();
-
-            let end = match snap {
-                None => self.curr,
-                Some(snap) => {
-                    let snap_rad = snap as f32 * PI / 180.0;
-                    let curr: Vector2<f32> = self.curr.map(|x| x as f32).into();
-                    let start: Vector2<f32> = start.map(|x| x as f32).into();
-                    let dist = curr.distance(start);
-                    let angle = vector_angle(&curr, &start) - PI / 2.0;
-                    let round_angle = (angle / snap_rad).round() * snap_rad;
-                    let end = start + Vector2::new(round_angle.cos(), round_angle.sin()) * dist;
-                    Point2::new(end.x.round() as i32, end.y.round() as i32)
-                }
-            };
-
-            Brush::line(start, end, &mut self.stroke);
-        } else if let Some(BrushMode::Circle) = self.circle_mode() {
-            self.stroke.clear();
-            Brush::circle(self.prev, self.curr, &mut self.stroke);
-        } else {
+        if !has_primitive_mode {
             Brush::line(self.prev, self.curr, &mut self.stroke);
             self.stroke.dedup();
+        } else {
+            self.stroke.clear();
+            let modes = self.primitive_modes().collect::<Vec<_>>();
+            for mode in modes {
+                match mode {
+                    BrushMode::Line(snap) => self.stroke_line(snap),
+                    BrushMode::Circle => self.stroke_circle(),
+                    BrushMode::Rectangle => self.stroke_rect(),
+                    _ => unreachable!(),
+                }
+            }
         }
 
         if self.is_set(BrushMode::Perfect) {
@@ -254,6 +270,34 @@ impl Brush {
             }
             _ => unreachable!(),
         }
+    }
+
+    fn stroke_line(&mut self, snap: Option<u32>) {
+        let start = self.prev;
+
+        let end = match snap {
+            None => self.curr,
+            Some(snap) => {
+                let snap_rad = snap as f32 * PI / 180.0;
+                let curr: Vector2<f32> = self.curr.map(|x| x as f32).into();
+                let start: Vector2<f32> = start.map(|x| x as f32).into();
+                let dist = curr.distance(start);
+                let angle = vector_angle(&curr, &start) - PI / 2.0;
+                let round_angle = (angle / snap_rad).round() * snap_rad;
+                let end = start + Vector2::new(round_angle.cos(), round_angle.sin()) * dist;
+                Point2::new(end.x.round() as i32, end.y.round() as i32)
+            }
+        };
+
+        Brush::line(start, end, &mut self.stroke);
+    }
+
+    fn stroke_circle(&mut self) {
+        Brush::circle(self.prev, self.curr, &mut self.stroke);
+    }
+
+    fn stroke_rect(&mut self) {
+        Brush::rectangle(self.prev, self.curr, &mut self.stroke);
     }
 
     /// Stop drawing. Called when input is released.
@@ -342,6 +386,21 @@ impl Brush {
         scale: f32,
         align: Align,
     ) -> Shape {
+        match self.head {
+            BrushHead::Square => self.square_head_shape(p, z, stroke, fill, scale, align),
+            BrushHead::Circle => self.circle_head_shape(p, z, stroke, fill, scale, align),
+        }
+    }
+
+    fn square_head_shape(
+        &self,
+        p: Point2<f32>,
+        z: ZDepth,
+        stroke: Stroke,
+        fill: Fill,
+        scale: f32,
+        align: Align,
+    ) -> Shape {
         let x = p.x;
         let y = p.y;
 
@@ -356,6 +415,34 @@ impl Brush {
             Rect::new(x, y, x + size * scale, y + size * scale) - Vector2::new(offset, offset),
             z,
             Rotation::ZERO,
+            stroke,
+            fill,
+        )
+    }
+
+    fn circle_head_shape(
+        &self,
+        p: Point2<f32>,
+        z: ZDepth,
+        stroke: Stroke,
+        fill: Fill,
+        scale: f32,
+        _align: Align,
+    ) -> Shape {
+        // TODO: Offset here is not right, when drawing with xsym/ysym mode
+        // this problem is the same though, when drawing with the square brush...
+        let origin = p;
+
+        // We keep sides a bit dynamic, as lower counts look better on lower brush sizes
+        // For large brush sizes, 16 sides looks pretty good always
+        let sides = (self.size * 4).min(16);
+        Shape::Circle(
+            Circle {
+                position: origin.into(),
+                radius: (self.size as f32 * scale) / 2.0,
+                sides: sides as u32,
+            },
+            z,
             stroke,
             fill,
         )
@@ -396,14 +483,14 @@ impl Brush {
     /// Draw a circle from origin and a pt on the circle. Uses Bresenham's circle algorithm.
     pub fn circle(origin: Point2<i32>, pt_on: Point2<i32>, canvas: &mut Vec<Point2<i32>>) {
         let draw_circle_quadrants = |x: i32, y: i32, canvas: &mut Vec<Point2<i32>>| {
-            canvas.push(origin + (x, y).into());
-            canvas.push(origin + (-x, y).into());
-            canvas.push(origin + (x, -y).into());
-            canvas.push(origin + (-x, -y).into());
-            canvas.push(origin + (y, x).into());
-            canvas.push(origin + (-y, x).into());
-            canvas.push(origin + (y, -x).into());
-            canvas.push(origin + (-y, -x).into());
+            canvas.push(origin + Point2::new(x, y));
+            canvas.push(origin + Point2::new(-x, y));
+            canvas.push(origin + Point2::new(x, -y));
+            canvas.push(origin + Point2::new(-x, -y));
+            canvas.push(origin + Point2::new(y, x));
+            canvas.push(origin + Point2::new(-y, x));
+            canvas.push(origin + Point2::new(y, -x));
+            canvas.push(origin + Point2::new(-y, -x));
         };
 
         let origin_f = Point2::new(origin.x as f32, origin.y as f32);
@@ -430,7 +517,27 @@ impl Brush {
         }
     }
 
+    /// Draw a rectangle from 2 corner points. If the points are equal, one of them will be drawn
+    pub fn rectangle(origin: Point2<i32>, other: Point2<i32>, canvas: &mut Vec<Point2<i32>>) {
+        if origin == other {
+            canvas.push(origin);
+            return;
+        }
+
+        let a = origin;
+        let b = Point2::new(other.x, origin.y);
+        let c = other;
+        let d = Point2::new(origin.x, other.y);
+
+        Self::line(a, b, canvas);
+        Self::line(b, c, canvas);
+        Self::line(c, d, canvas);
+        Self::line(d, a, canvas);
+    }
+
     /// Paint a circle into a pixel buffer.
+    /// TODO: This could be used to implement a circular brush head maybe
+    /// it is currently unused outside of tests
     #[allow(dead_code)]
     fn paint(
         pixels: &mut [Rgba8],
